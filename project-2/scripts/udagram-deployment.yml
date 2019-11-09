@@ -13,7 +13,7 @@ Parameters:
     ImageID:
         Description: The Image ID which shall be used in the root user
         Type: String
-        Default: "ami-0d54531821d6176d4"
+        Default: "ami-06d51e91cea0dac8d"
     InstanceKey:
         Description: The instance Key Name
         Type: String
@@ -300,29 +300,29 @@ Resources:
       Type: AWS::AutoScaling::LaunchConfiguration
       Properties:
           UserData:
-              Fn::Base64: !Sub |
-                  #!/bin/bash
-                  # Install Docker
-                  apt-get update -y
-                  apt-get install -y \
-                  apt-transport-https \
-                  ca-certificates \
-                  curl \
-                  gnupg-agent \
-                  software-properties-common \
-                  awscli
-                  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
-                  add-apt-repository \
-                  "deb [arch=amd64] https://download.docker.com/linux/ubuntu \
-                  $(lsb_release -cs) \
-                  stable"
-                  apt-get update -y
-                  apt-get install -y docker-ce docker-ce-cli containerd.io
-                  usermod -aG docker ubuntu
-                  mkdir /app/
-                  chmod 777 -R /app/
-                  aws s3 cp s3://dev.site /app/ --recursive
-                  docker run -dit --name udagram -p 8080:80 -v /app/:/usr/local/apache2/htdocs/ httpd:2.4
+            Fn::Base64: !Sub |
+                #!/bin/bash
+                # Install Docker
+                apt-get update -y
+                apt-get install -y \
+                apt-transport-https \
+                ca-certificates \
+                curl \
+                gnupg-agent \
+                software-properties-common \
+                awscli
+                curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+                add-apt-repository \
+                "deb [arch=amd64] https://download.docker.com/linux/ubuntu \
+                $(lsb_release -cs) \
+                stable"
+                apt-get update -y
+                apt-get install -y docker-ce docker-ce-cli containerd.io
+                usermod -aG docker ubuntu
+                mkdir /app/
+                chmod 777 -R /app/
+                aws s3 cp s3://dev.site /app/ --recursive
+                docker run -dit --name udagram -p 8080:80 -v /app/:/usr/local/apache2/htdocs/ httpd:2.4
           ImageId: !Ref ImageID
           KeyName: !Ref InstanceKey
           IamInstanceProfile: !Ref InstanceProfile

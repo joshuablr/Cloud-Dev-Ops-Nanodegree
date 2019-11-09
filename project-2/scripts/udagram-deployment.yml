@@ -1,0 +1,420 @@
+Description:
+     The Deployment of Udagram in High Availability Environment
+
+Parameters:
+    EnvironmentName:
+      Description: Deployment Environment
+      Type: String
+      Default: "dev"
+    InstanceType:
+        Description: The EC2 instance type of general purpose
+        Type: String
+        AllowedValues: [t2.medium, t3.small, t3.nano, t3.micro, t3.small, t3.medium, t3.large, t3.xlarge, t3.2xlarge]
+    ImageID:
+        Description: The Image ID which shall be used in the root user
+        Type: String
+        Default: "ami-0d54531821d6176d4"
+    InstanceKey:
+        Description: The instance Key Name
+        Type: String
+        Default: "aws-key-mint"
+    S3Bucket:
+        Description: The S3 Bucket where the source is stored
+        Type: String
+        Default: "devops.me"
+    DevVpcCIDR:
+      Type: String
+      Default: 10.0.0.0/16
+    
+    PublicSubnet1CIDR:
+        Description: Please enter the IP range (CIDR notation) for the public subnet in the first Availability Zone
+        Type: String
+        Default: 10.0.0.0/24
+
+    PublicSubnet2CIDR:
+        Description: Please enter the IP range (CIDR notation) for the public subnet in the second Availability Zone
+        Type: String
+        Default: 10.0.1.0/24
+
+    PrivateSubnet1CIDR:
+        Description: Please enter the IP range (CIDR notation) for the private subnet in the first Availability Zone
+        Type: String
+        Default: 10.0.2.0/24
+
+    PrivateSubnet2CIDR:
+        Description: Please enter the IP range (CIDR notation) for the private subnet in the second Availability Zone
+        Type: String
+        Default: 10.0.3.0/24
+     
+Resources:
+  RootRole:
+      Type: AWS::IAM::Role
+      Properties: 
+        RoleName: !Sub ${EnvironmentName}-Role
+        AssumeRolePolicyDocument: 
+          Version: "2012-10-17"
+          Statement: 
+            - 
+              Effect: "Allow"
+              Principal: 
+                Service: 
+                  - "ec2.amazonaws.com"
+              Action: 
+                - "sts:AssumeRole"
+        Path: "/"
+
+  RootRole:
+      Type: AWS::IAM::Role
+      Properties:
+        RoleName: 
+            !Sub ${EnvironmentName}-Role
+        AssumeRolePolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+            -   Effect: Allow
+                Principal:
+                    Service:
+                    - ec2.amazonaws.com
+                Action:
+                - sts:AssumeRole
+        Path: "/"
+
+  RolePolicies:
+      Type: AWS::IAM::Policy
+      Properties:
+        PolicyName: AmazonS3ReadOnlyAccess
+        PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - 
+                Effect: Allow
+                Action: 
+                -   s3:Get*
+                -   s3:List*
+                Resource: 
+                -   arn:aws:s3:::dev.site
+                -   arn:aws:s3:::dev.site/*
+        Roles:
+        -   Ref: RootRole
+            
+  InstanceProfile:
+      Type: AWS::IAM::InstanceProfile
+      Properties: 
+        InstanceProfileName: "InstanceProfile"
+        Path: "/"
+        Roles: 
+          - Ref: RootRole                 
+  devVPC:
+      Type: AWS::EC2::VPC
+      Properties:
+        CidrBlock: !Ref DevVpcCIDR
+        EnableDnsSupport: false
+        Tags:
+          - Key: Name
+            Value: !Ref EnvironmentName
+
+  PublicSubnet1:
+      Type: AWS::EC2::Subnet
+      Properties:
+        VpcId: !Ref devVPC
+        AvailabilityZone: !Select [ 0, !GetAZs '' ] 
+        CidrBlock: !Ref PublicSubnet1CIDR
+        MapPublicIpOnLaunch: true
+        Tags:
+          - Key: Name
+            Value: !Sub ${EnvironmentName} Public Subnet (AZ1)
+
+  PublicSubnet2:
+      Type: AWS::EC2::Subnet
+      Properties:
+        VpcId: !Ref devVPC
+        AvailabilityZone: !Select [ 1, !GetAZs '' ] 
+        CidrBlock: !Ref PublicSubnet2CIDR
+        MapPublicIpOnLaunch: true
+        Tags:
+          - Key: Name
+            Value: !Sub ${EnvironmentName} Public Subnet (AZ2)
+    
+  PrivateSubnet1:
+      Type: AWS::EC2::Subnet
+      Properties:
+        VpcId: !Ref devVPC
+        AvailabilityZone: !Select [ 0, !GetAZs '' ] 
+        CidrBlock: !Ref PrivateSubnet1CIDR
+        MapPublicIpOnLaunch: false
+        Tags:
+          - Key: Name
+            Value: !Sub ${EnvironmentName} Private Subnet (AZ1)
+
+  PrivateSubnet2:
+      Type: AWS::EC2::Subnet
+      Properties:
+        VpcId: !Ref devVPC
+        AvailabilityZone: !Select [ 1, !GetAZs '' ] 
+        CidrBlock: !Ref PrivateSubnet2CIDR
+        MapPublicIpOnLaunch: false
+        Tags:
+          - Key: Name
+            Value: !Sub ${EnvironmentName} Private Subnet (AZ2)
+
+  InternetGateway:
+      Type: AWS::EC2::InternetGateway
+      Properties:
+        Tags:
+          - Key: Name
+            Value: !Ref EnvironmentName
+            
+  InternetGatewayAttachment:
+      Type: AWS::EC2::VPCGatewayAttachment
+      Properties:
+        InternetGatewayId: !Ref InternetGateway
+        VpcId:  !Ref devVPC
+
+  NatGateway1EIP:
+      Type: AWS::EC2::EIP
+      DependsOn: InternetGatewayAttachment
+      Properties: 
+          Domain: devVPC
+
+  NatGateway2EIP:
+      Type: AWS::EC2::EIP
+      DependsOn: InternetGatewayAttachment
+      Properties:
+          Domain: devVPC
+
+  NatGateway1: 
+      Type: AWS::EC2::NatGateway
+      Properties: 
+          AllocationId: !GetAtt NatGateway1EIP.AllocationId
+          SubnetId: !Ref PublicSubnet1
+
+  NatGateway2: 
+      Type: AWS::EC2::NatGateway
+      Properties:
+          AllocationId: !GetAtt NatGateway2EIP.AllocationId
+          SubnetId: !Ref PublicSubnet2
+
+  PublicRouteTable:
+      Type: AWS::EC2::RouteTable
+      Properties: 
+          VpcId: !Ref devVPC
+          Tags: 
+              - Key: Name 
+                Value: !Sub ${EnvironmentName} Public Routes
+
+  DefaultPublicRoute: 
+      Type: AWS::EC2::Route
+      DependsOn: InternetGatewayAttachment
+      Properties: 
+          RouteTableId: !Ref PublicRouteTable
+          DestinationCidrBlock: 0.0.0.0/0
+          GatewayId: !Ref InternetGateway
+
+  PublicSubnet1RouteTableAssociation:
+      Type: AWS::EC2::SubnetRouteTableAssociation
+      Properties:
+          RouteTableId: !Ref PublicRouteTable
+          SubnetId: !Ref PublicSubnet1
+
+  PublicSubnet2RouteTableAssociation:
+      Type: AWS::EC2::SubnetRouteTableAssociation
+      Properties:
+          RouteTableId: !Ref PublicRouteTable
+          SubnetId: !Ref PublicSubnet2
+
+  PrivateRouteTable1:
+      Type: AWS::EC2::RouteTable
+      Properties: 
+        VpcId: !Ref devVPC
+        Tags: 
+            - Key: Name 
+              Value: !Sub ${EnvironmentName} Private Routes (AZ1)
+
+  DefaultPrivateRoute1:
+      Type: AWS::EC2::Route
+      Properties:
+          RouteTableId: !Ref PrivateRouteTable1
+          DestinationCidrBlock: 0.0.0.0/0
+          NatGatewayId: !Ref NatGateway1
+
+  PrivateSubnet1RouteTableAssociation:
+      Type: AWS::EC2::SubnetRouteTableAssociation
+      Properties:
+          RouteTableId: !Ref PrivateRouteTable1
+          SubnetId: !Ref PrivateSubnet1
+
+  PrivateRouteTable2:
+      Type: AWS::EC2::RouteTable
+      Properties: 
+          VpcId: !Ref devVPC
+          Tags: 
+              - Key: Name 
+                Value: !Sub ${EnvironmentName} Private Routes (AZ2)
+
+  DefaultPrivateRoute2:
+      Type: AWS::EC2::Route
+      Properties:
+          RouteTableId: !Ref PrivateRouteTable2
+          DestinationCidrBlock: 0.0.0.0/0
+          NatGatewayId: !Ref NatGateway2
+
+  PrivateSubnet2RouteTableAssociation:
+      Type: AWS::EC2::SubnetRouteTableAssociation
+      Properties:
+          RouteTableId: !Ref PrivateRouteTable2
+          SubnetId: !Ref PrivateSubnet2
+
+  LoadBalancerSecGroup:
+      Type: AWS::EC2::SecurityGroup
+      Properties:
+          GroupDescription: Allow http traffic to and from load balancer
+          VpcId: !Ref devVPC
+          SecurityGroupIngress:
+          -   IpProtocol: tcp
+              FromPort: 80
+              ToPort: 80
+              CidrIp: 0.0.0.0/0
+          SecurityGroupEgress:
+          -   IpProtocol: tcp
+              FromPort: 80
+              ToPort: 80
+              CidrIp: 0.0.0.0/0
+
+  WebServerSecGroup:
+      Type: AWS::EC2::SecurityGroup
+      Properties:
+          GroupDescription: Allow http and ssh to our load balancer
+          VpcId: !Ref devVPC
+          SecurityGroupIngress:
+          -   IpProtocol: tcp
+              FromPort: 80
+              ToPort: 80
+              CidrIp: 0.0.0.0/0
+          SecurityGroupEgress:
+          -   IpProtocol: tcp
+              FromPort: 0
+              ToPort: 65535
+              CidrIp: 0.0.0.0/0
+
+  WebAppLaunchConfig: 
+      Type: AWS::AutoScaling::LaunchConfiguration
+      Properties:
+          UserData:
+              Fn::Base64: !Sub |
+                  #!/bin/bash
+                  # Install Docker
+                  apt-get update -y
+                  apt-get install -y \
+                  apt-transport-https \
+                  ca-certificates \
+                  curl \
+                  gnupg-agent \
+                  software-properties-common \
+                  awscli
+                  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+                  add-apt-repository \
+                  "deb [arch=amd64] https://download.docker.com/linux/ubuntu \
+                  $(lsb_release -cs) \
+                  stable"
+                  apt-get update -y
+                  apt-get install -y docker-ce docker-ce-cli containerd.io
+                  usermod -aG docker ubuntu
+                  mkdir /app/
+                  chmod 777 -R /app/
+                  aws s3 cp s3://dev.site /app/ --recursive
+                  docker run -dit --name udagram -p 8080:80 -v /app/:/usr/local/apache2/htdocs/ httpd:2.4
+          ImageId: !Ref ImageID
+          KeyName: !Ref InstanceKey
+          IamInstanceProfile: !Ref InstanceProfile
+          SecurityGroups:
+          -   Ref: WebServerSecGroup
+          InstanceType: !Ref InstanceType
+          BlockDeviceMappings:
+          -   DeviceName: "/dev/sdk"
+              Ebs:
+                  VolumeSize: '10' #10GB
+
+  WebAppTargetGroup:
+      Type: AWS::ElasticLoadBalancingV2::TargetGroup
+      Properties:
+          HealthCheckIntervalSeconds: 10
+          HealthCheckPath: /
+          HealthCheckProtocol: HTTP
+          HealthCheckTimeoutSeconds: 8
+          HealthyThresholdCount: 2
+          Port: 80
+          Protocol: HTTP
+          UnhealthyThresholdCount: 5
+          VpcId: !Ref devVPC
+
+  WebAppGroup:
+      Type: AWS::AutoScaling::AutoScalingGroup
+      Properties:
+          VPCZoneIdentifier:  
+          - !Ref PrivateSubnet1
+          - !Ref PrivateSubnet2 
+          LaunchConfigurationName:
+              Ref: WebAppLaunchConfig
+          MinSize: '2'
+          MaxSize: '5'
+          TargetGroupARNs:
+          -   Ref: WebAppTargetGroup
+
+  WebAppLB:
+      Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+      Properties:
+          SecurityGroups:
+          - Ref: LoadBalancerSecGroup
+          Subnets:
+          - !Ref PublicSubnet1
+          - !Ref PublicSubnet2
+  Listener:
+      Type: AWS::ElasticLoadBalancingV2::Listener
+      Properties:
+          DefaultActions:
+          -   Type: forward
+              TargetGroupArn:
+                  Ref: WebAppTargetGroup
+          LoadBalancerArn:
+              Ref: WebAppLB
+          Port: '80'
+          Protocol: HTTP
+
+  ALBListenerRule:
+      Type: AWS::ElasticLoadBalancingV2::ListenerRule
+      Properties:
+          Actions:
+          -   Type: forward
+              TargetGroupArn: !Ref 'WebAppTargetGroup'
+          Conditions:
+          -   Field: path-pattern
+              Values: [/]
+          ListenerArn: !Ref 'Listener'
+          Priority: 1
+
+Outputs:
+
+  VPC:
+      Description: VPC for the Udagram
+      Value: !Ref devVPC
+      Export:
+        Name: !Sub ${EnvironmentName}-VPCID
+
+  PublicSubnets:
+      Description: A list of the public subnets on udagram Deployment
+      Value: !Join [ ",", [ !Ref PublicSubnet1, !Ref PublicSubnet2 ]]
+      Export:
+        Name: !Sub ${EnvironmentName}-PUSN
+
+  PrivateSubnets:
+      Description: A list of the private subnets on udagram Deployment
+      Value: !Join [ ",", [ !Ref PrivateSubnet1, !Ref PrivateSubnet2 ]]
+      Export:
+        Name: !Sub ${EnvironmentName}-PRSN
+
+  WebAppLoadBalancerDNSName:
+      Description: DNS name or Public URL of the Load Balancer
+      Value: !Join [ "", [ 'http://', !GetAtt WebAppLB.DNSName ]]
+      Export:
+          Name: !Sub ${EnvironmentName}-LB-DNSName
+    

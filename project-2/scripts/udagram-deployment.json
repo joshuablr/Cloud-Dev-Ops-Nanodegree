@@ -5,7 +5,7 @@
     },
     {
         "ParameterKey":"InstanceType",
-        "ParameterValue":"t3.small"
+        "ParameterValue":"t3.medium"
     },
     {
         "ParameterKey":"InstanceKey",
@@ -13,7 +13,7 @@
     },
     {
         "ParameterKey":"ImageID",
-        "ParameterValue":"ami-0d54531821d6176d4"
+        "ParameterValue":"ami-04b17f6875b4d9c29"
     },
     {
         "ParameterKey":"S3Bucket",

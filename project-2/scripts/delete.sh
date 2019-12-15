@@ -1,2 +1,2 @@
-aws cloudformation delete-stack \
+aws2 cloudformation delete-stack \
 --stack-name $1

@@ -13,7 +13,7 @@ Parameters:
     ImageID:
         Description: The Image ID which shall be used in the root user
         Type: String
-        Default: "ami-06d51e91cea0dac8d"
+        Default: "ami-04b17f6875b4d9c29"
     InstanceKey:
         Description: The instance Key Name
         Type: String
@@ -63,22 +63,6 @@ Resources:
                 - "sts:AssumeRole"
         Path: "/"
 
-  RootRole:
-      Type: AWS::IAM::Role
-      Properties:
-        RoleName: 
-            !Sub ${EnvironmentName}-Role
-        AssumeRolePolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-            -   Effect: Allow
-                Principal:
-                    Service:
-                    - ec2.amazonaws.com
-                Action:
-                - sts:AssumeRole
-        Path: "/"
-
   RolePolicies:
       Type: AWS::IAM::Policy
       Properties:
@@ -108,7 +92,6 @@ Resources:
       Type: AWS::EC2::VPC
       Properties:
         CidrBlock: !Ref DevVpcCIDR
-        EnableDnsSupport: false
         Tags:
           - Key: Name
             Value: !Ref EnvironmentName
@@ -290,39 +273,30 @@ Resources:
               FromPort: 80
               ToPort: 80
               CidrIp: 0.0.0.0/0
+          -   IpProtocol: tcp
+              FromPort: 22
+              ToPort: 22
+              #TODO replace it with bastion CIDR
+              CidrIp: 0.0.0.0/0
           SecurityGroupEgress:
           -   IpProtocol: tcp
               FromPort: 0
               ToPort: 65535
               CidrIp: 0.0.0.0/0
-
+         
   WebAppLaunchConfig: 
       Type: AWS::AutoScaling::LaunchConfiguration
       Properties:
           UserData:
             Fn::Base64: !Sub |
                 #!/bin/bash
-                # Install Docker
                 apt-get update -y
-                apt-get install -y \
-                apt-transport-https \
-                ca-certificates \
-                curl \
-                gnupg-agent \
-                software-properties-common \
-                awscli
-                curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
-                add-apt-repository \
-                "deb [arch=amd64] https://download.docker.com/linux/ubuntu \
-                $(lsb_release -cs) \
-                stable"
-                apt-get update -y
-                apt-get install -y docker-ce docker-ce-cli containerd.io
-                usermod -aG docker ubuntu
-                mkdir /app/
-                chmod 777 -R /app/
-                aws s3 cp s3://dev.site /app/ --recursive
-                docker run -dit --name udagram -p 8080:80 -v /app/:/usr/local/apache2/htdocs/ httpd:2.4
+                apt-get install unzip awscli -y
+                apt-get install apache2 -y
+                systemctl start apache2.service
+                sudo rm /var/www/html/index.html
+                sudo  aws s3 cp s3://dev.site/ /var/www/html --recursive 
+                systemctl restart apache2.service
           ImageId: !Ref ImageID
           KeyName: !Ref InstanceKey
           IamInstanceProfile: !Ref InstanceProfile
@@ -333,6 +307,8 @@ Resources:
           -   DeviceName: "/dev/sdk"
               Ebs:
                   VolumeSize: '10' #10GB
+                  DeleteOnTermination: true
+          
 
   WebAppTargetGroup:
       Type: AWS::ElasticLoadBalancingV2::TargetGroup
